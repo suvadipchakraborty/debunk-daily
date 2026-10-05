@@ -25,7 +25,7 @@ const CONFIG = {
   REPORT_CACHE_KEY: "debunk-daily:reports:v1",
   REPORT_CACHE_MAX: 20,        // reports kept on the device for offline / instant reopening
   REPORT_MAX_CHARS: 15000,     // longer reports are cut with a "continue on original site" note
-  REPORT_TIMEOUT_MS: 25000,
+  REPORT_TIMEOUT_MS: 15000,   // per reader; the next one is tried after this
 
   // Topics used to sweep the API for recent fact-checks (the API needs a query)
   TOPICS: ["viral video", "whatsapp scam", "hoax", "health myth", "deepfake", "election rumor"],
@@ -298,18 +298,56 @@ function parseReport(raw) {
     blocks.push([type, line]);
   }
 
-  if (chars < 400) throw new Error("too short");
+  if (chars < 300) throw new Error("too short");
   return { title, blocks, truncated };
 }
 
+// Tried in order until one returns a readable article. Free public proxies, so any one can be down or blocked.
+const READERS = [
+  { name: "jina", html: false, url: (u) => CONFIG.READER_URL + u },
+  { name: "allorigins", html: true, url: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+  { name: "corsproxy", html: true, url: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
+];
+
+// Turns raw page HTML into the same "Title: / Markdown Content:" text parseReport() already understands.
+function htmlToText(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const title = (doc.querySelector("h1")?.textContent || doc.title || "").replace(/\s+/g, " ").trim();
+  doc.querySelectorAll("script, style, noscript, nav, header, footer, aside, form, iframe, svg, figure, button, [role=navigation], [class*=share], [class*=related], [class*=comment], [class*=sidebar], [class*=menu]")
+    .forEach((n) => { if (!n.matches("html, body, article, main") && !n.querySelector("article, main")) n.remove(); });
+
+  const textOf = (root) => [...root.querySelectorAll("h1, h2, h3, h4, p, li, blockquote")].map((el) => {
+    const t = el.textContent.replace(/\s+/g, " ").trim();
+    if (!t) return "";
+    if (/^H[12]$/.test(el.tagName)) return `## ${t}`;
+    if (/^H[34]$/.test(el.tagName)) return `### ${t}`;
+    if (el.tagName === "LI") return `* ${t}`;
+    return t;
+  }).filter(Boolean);
+
+  let lines = [];
+  const root = doc.querySelector("article, [itemprop=articleBody], .entry-content, .post-content, main");
+  if (root) lines = textOf(root);
+  if (lines.join(" ").length < 400) lines = textOf(doc.body);   // container guess was too narrow
+  return `Title: ${title}\n\nMarkdown Content:\n${lines.join("\n\n")}`;
+}
+
 async function fetchReport(url) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CONFIG.REPORT_TIMEOUT_MS);
-  try {
-    const res = await fetch(CONFIG.READER_URL + url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseReport(await res.text());
-  } finally { clearTimeout(timer); }
+  let lastErr = new Error("no reader available");
+  for (const reader of READERS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CONFIG.REPORT_TIMEOUT_MS);
+    try {
+      const res = await fetch(reader.url(url), { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`${reader.name}: HTTP ${res.status}`);
+      const raw = await res.text();
+      return parseReport(reader.html ? htmlToText(raw) : raw);
+    } catch (err) {
+      console.warn(`Reader "${reader.name}" failed:`, err);
+      lastErr = err;
+    } finally { clearTimeout(timer); }
+  }
+  throw lastErr;
 }
 
 function readReportCache() {

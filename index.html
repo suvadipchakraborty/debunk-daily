@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Debunk Daily – The latest fake news, debunked</title>
+  <meta name="description" content="Swipe through the latest viral rumors, hoaxes and WhatsApp forwards, each one fact-checked and debunked.">
+  <meta name="theme-color" content="#000000">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Debunk Daily">
+  <meta property="og:title" content="Debunk Daily – The latest fake news, debunked">
+  <meta property="og:description" content="Swipe through the latest viral rumors and hoaxes, each one fact-checked and debunked.">
+  <meta property="og:url" content="https://debunk-daily.suvadipchakraborty.workers.dev/">
+  <meta property="og:image" content="https://debunk-daily.suvadipchakraborty.workers.dev/preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Debunk Daily – The latest fake news, debunked">
+  <meta name="twitter:description" content="Swipe through the latest viral rumors and hoaxes, each one fact-checked and debunked.">
+  <meta name="twitter:image" content="https://debunk-daily.suvadipchakraborty.workers.dev/preview.png">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="wrap masthead-row">
+      <h1 class="logo">Debunk Daily</h1>
+      <button id="install-btn" class="btn btn-ghost" type="button">Save App</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="feed-head">
+      <h2>Fake news, debunked</h2>
+      <p id="feed-sub" class="muted">Loading the latest stories…</p>
+    </section>
+
+    <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+
+    <section id="stage" class="stage" tabindex="0" aria-live="polite" aria-label="Debunked news flashcards"></section>
+    <section id="message" class="message" hidden></section>
+
+    <nav id="pager" class="pager" aria-label="Story navigation">
+      <button id="prev" class="btn btn-outline" type="button" aria-label="Previous story">Back</button>
+      <span id="count" class="muted" aria-live="polite"></span>
+      <button id="next" class="btn btn-red" type="button" aria-label="Next story">Next story</button>
+    </nav>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>Built by Suva</p>
+      <p><a href="mailto:suvadipchakraborty@gmail.com?subject=Debunk%20Daily%20feedback">Send feedback</a></p>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

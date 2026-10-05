@@ -37,7 +37,10 @@
   <header class="masthead">
     <div class="wrap masthead-row">
       <h1 class="logo">Debunk Daily</h1>
-      <button id="install-btn" class="btn btn-ghost" type="button">Save App</button>
+      <div class="masthead-actions">
+        <button class="icon-btn" type="button" data-open-about aria-label="About Debunk Daily" title="About">i</button>
+        <button id="install-btn" class="btn btn-ghost" type="button">Save App</button>
+      </div>
     </div>
   </header>
 
@@ -62,9 +65,57 @@
   <footer class="footer">
     <div class="wrap">
       <p>Built by Suva</p>
-      <p><a href="mailto:suvadipchakraborty@gmail.com?subject=Debunk%20Daily%20feedback">Send feedback</a></p>
+      <p><a href="#about" data-open-about>About</a> &middot; <a href="mailto:suvadipchakraborty@gmail.com?subject=Debunk%20Daily%20feedback">Send feedback</a></p>
     </div>
   </footer>
+
+
+  <dialog id="about" class="about" aria-labelledby="about-title">
+    <div class="about-head">
+      <h2 id="about-title">About Debunk Daily</h2>
+      <button class="about-close" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div class="about-body">
+      <h3>Why it exists</h3>
+      <p>Rumors, doctored videos and scary WhatsApp forwards spread faster than the corrections that follow them. Debunk Daily puts the corrections where you can actually see them: one false claim at a time, stamped with the verdict from the people who checked it.</p>
+
+      <h3>How it works</h3>
+      <ul>
+        <li><strong>Read the claim.</strong> Each card shows a recent viral claim and who made it.</li>
+        <li><strong>Tap to flip.</strong> The back shows the verdict, who debunked it, and the full fact-check report right inside the app.</li>
+        <li><strong>Swipe or tap Next</strong> to move through the deck, newest first.</li>
+        <li><strong>Share.</strong> The share button sends a ready-made &ldquo;fake news alert&rdquo; to friends and family.</li>
+      </ul>
+
+      <h3>Why use it</h3>
+      <ul>
+        <li>Learn the truth in seconds, then dig into the evidence when you want to.</li>
+        <li>Stay ahead of the hoaxes your family group chat is about to forward.</li>
+        <li>Every story links back to the original fact-checker, so you can verify it yourself.</li>
+        <li>Free, with no sign-up and no ads. Install it on your home screen and it opens like any other app.</li>
+      </ul>
+
+      <h3>Where the stories come from</h3>
+      <p>Claims come from Google&rsquo;s Fact Check Tools, which gathers reviews from independent fact-checking organizations such as Snopes, Reuters, PolitiFact, FactCheck.org, BOOM and AFP. Only claims rated false (or, when those are scarce, misleading) in the last 30 days are shown. Debunk Daily doesn&rsquo;t write or edit the verdicts. They belong to the fact-checkers named on each card.</p>
+
+      <h3>Spot a fake yourself</h3>
+      <ul>
+        <li>Be wary of anything that makes you angry or afraid, and anything that says &ldquo;forward to everyone&rdquo;.</li>
+        <li>Check the date. Old photos and videos often return as &ldquo;breaking news&rdquo;.</li>
+        <li>Look for the same story from a source you trust before sharing.</li>
+        <li>Do a reverse image search on suspicious photos.</li>
+      </ul>
+
+      <h3>Good to know</h3>
+      <ul>
+        <li>Full reports are loaded through a free text-reader service. A few sites block this, so each report also has an &ldquo;Open original&rdquo; link. Reports you&rsquo;ve opened are saved on your device so they load instantly next time.</li>
+        <li>The app has no accounts and keeps nothing about you on a server. Your saved stories live only in your browser.</li>
+        <li>A fact-check is a snapshot in time. Ratings can be updated as new evidence appears, so the original article is always the final word.</li>
+      </ul>
+
+      <p class="about-foot">Built by Suva. Found a bug or have an idea? <a href="mailto:suvadipchakraborty@gmail.com?subject=Debunk%20Daily%20feedback">Send feedback</a>.</p>
+    </div>
+  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>

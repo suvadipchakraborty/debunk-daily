@@ -19,6 +19,14 @@ const CONFIG = {
   MIN_FALSE_CARDS: 8,   // if fewer "false" stories exist, pad with "misleading" ones
   CACHE_KEY: "debunk-daily:feed:v2",
 
+  // Full-report reader. Fact-check sites don't allow browsers to fetch their pages directly (CORS),
+  // so the page is fetched through a free "reader" service that returns the article as clean text.
+  READER_URL: "https://r.jina.ai/",
+  REPORT_CACHE_KEY: "debunk-daily:reports:v1",
+  REPORT_CACHE_MAX: 20,        // reports kept on the device for offline / instant reopening
+  REPORT_MAX_CHARS: 15000,     // longer reports are cut with a "continue on original site" note
+  REPORT_TIMEOUT_MS: 25000,
+
   // Topics used to sweep the API for recent fact-checks (the API needs a query)
   TOPICS: ["viral video", "whatsapp scam", "hoax", "health myth", "deepfake", "election rumor"],
   // Fact-check publishers swept for their latest work
@@ -158,7 +166,7 @@ function buildCard(c) {
     ),
     h("blockquote", { class: "claim", style: "margin:0" }, `\u201C${c.text}\u201D`),
     c.claimant && h("p", { class: "claimant" }, `Claimed by ${c.claimant}`),
-    h("p", { class: "hint" }, "Tap the card to see who debunked it"),
+    h("p", { class: "hint" }, "Tap the card to read the full debunk"),
     h("div", { class: `stamp ${verdict === "mixed" ? "s-mixed" : ""}`, "aria-hidden": "true" }, stampText)
   );
 
@@ -168,12 +176,17 @@ function buildCard(c) {
       shareButton(c)
     ),
     h("div", { class: "verdict" },
-      h("span", { class: `badge ${verdict === "mixed" ? "v-mixed" : ""}` }, c.rating),
-      h("p", { class: "by" }, `Debunked by ${c.publisher}`),
-      ago && h("p", { class: "when" }, `Published ${ago}`)
+      h("div", { class: "verdict-row" },
+        h("span", { class: `badge ${verdict === "mixed" ? "v-mixed" : ""}` }, c.rating),
+        ago && h("span", { class: "when" }, ago)
+      ),
+      h("p", { class: "by" }, `Debunked by ${c.publisher}`)
     ),
-    c.url && h("a", { class: "btn btn-red", href: c.url, target: "_blank", rel: "noopener noreferrer" }, "Read Full Report"),
-    h("p", { class: "hint" }, "Tap the card to flip back")
+    h("div", { class: "report", tabindex: "0", role: "region", "aria-label": "Full fact-check report", "data-state": "idle" }),
+    h("div", { class: "back-actions" },
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => flip() }, "\u21BA Back to claim"),
+      c.url && h("a", { class: "btn btn-red btn-sm", href: c.url, target: "_blank", rel: "noopener noreferrer" }, "Open original \u2197")
+    )
   );
 
   return h("div", { class: "card" }, front, back);
@@ -220,6 +233,153 @@ function flip() {
   card.classList.toggle("is-flipped", flipped);
   card.querySelector(".front").toggleAttribute("inert", flipped);
   card.querySelector(".back").toggleAttribute("inert", !flipped);
+  if (flipped) {
+    const box = card.querySelector(".report");
+    const c = claims[idx];
+    if (box && c && !["ok", "loading"].includes(box.dataset.state)) showReport(c, box);
+  }
+}
+
+/* ============================================================
+   Full report: fetch, clean up, render
+   ============================================================ */
+const reportMem = new Map();
+
+const NOISE = /(cookie|subscribe|newsletter|sign up|log ?in\b|privacy policy|terms of (use|service)|all rights reserved|advertisement|skip to|follow us|share (this|on)|read more|related (articles|stories|fact)|click here to|support (our|independent)|donate|copyright \u00A9)/i;
+const STOP_HEADING = /^(related|more from|you may also|recommended|trending|read next|leave a comment|comments?\b|latest (news|stories|fact))/i;
+const BLOCKED = /(just a moment|verify you are human|enable javascript|access denied|attention required|are you a robot|captcha)/i;
+
+function parseReport(raw) {
+  if (/Target URL returned error\s+[45]\d\d/i.test(raw) || BLOCKED.test(raw.slice(0, 700))) throw new Error("blocked");
+
+  const title = (raw.match(/^Title:\s*(.+)$/m) || [])[1]?.trim() || "";
+  const marker = "Markdown Content:";
+  const mi = raw.indexOf(marker);
+  const body = mi >= 0 ? raw.slice(mi + marker.length) : raw;
+
+  const blocks = [];
+  const seen = new Set();
+  let chars = 0, truncated = false;
+
+  for (let line of body.split(/\r?\n/)) {
+    line = line.trim();
+    if (!line || /^[=\-_*#\s|>]+$/.test(line)) continue;
+
+    line = line
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")          // images
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")        // links -> their text
+      .replace(/https?:\/\/\S+/g, "")                  // bare URLs
+      .replace(/(\*\*|__|`)/g, "")                      // bold / code marks
+      .replace(/\*(\S[^*]*?)\*/g, "$1")                // italics
+      .replace(/\s+/g, " ").trim();
+    if (!line) continue;
+
+    let type = "p";
+    const hm = line.match(/^#{1,6}\s+(.*)$/);
+    const lm = line.match(/^(?:[*+\u2022-]|\d+\.)\s+(.*)$/);
+    if (hm) { type = "h"; line = hm[1].trim(); }
+    else if (lm) { type = "li"; line = lm[1].trim(); }
+    line = line.replace(/^>\s*/, "");
+
+    const words = line.split(" ").length;
+    if (type === "h") {
+      if (STOP_HEADING.test(line)) break;
+      if (words < 2 || line === title) continue;
+    } else {
+      if (words < 5) continue;                        // menus, buttons, bylines
+      if (line.length < 160 && NOISE.test(line)) continue;
+    }
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (chars + line.length > CONFIG.REPORT_MAX_CHARS) { truncated = true; break; }
+    chars += line.length;
+    blocks.push([type, line]);
+  }
+
+  if (chars < 400) throw new Error("too short");
+  return { title, blocks, truncated };
+}
+
+async function fetchReport(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CONFIG.REPORT_TIMEOUT_MS);
+  try {
+    const res = await fetch(CONFIG.READER_URL + url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return parseReport(await res.text());
+  } finally { clearTimeout(timer); }
+}
+
+function readReportCache() {
+  try { return JSON.parse(localStorage.getItem(CONFIG.REPORT_CACHE_KEY) || "{}"); } catch { return {}; }
+}
+function saveReportCache(url, report) {
+  try {
+    const all = readReportCache();
+    all[url] = { ...report, ts: Date.now() };
+    Object.keys(all).sort((a, b) => all[b].ts - all[a].ts).slice(CONFIG.REPORT_CACHE_MAX).forEach((k) => delete all[k]);
+    localStorage.setItem(CONFIG.REPORT_CACHE_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+async function getReport(url) {
+  if (reportMem.has(url)) return reportMem.get(url);
+  const saved = readReportCache()[url];
+  if (saved?.blocks?.length) { reportMem.set(url, saved); return saved; }
+  const report = await fetchReport(url);
+  reportMem.set(url, report);
+  saveReportCache(url, report);
+  return report;
+}
+
+function originalLink(c, label) {
+  return h("a", { class: "report-link", href: c.url, target: "_blank", rel: "noopener noreferrer" }, label);
+}
+
+function renderReport(r, c) {
+  const out = [];
+  if (r.title) out.push(h("h4", { class: "report-title" }, r.title));
+  out.push(h("p", { class: "report-source" }, `Source: ${c.publisher}`));
+  for (const [type, text] of r.blocks) {
+    if (type === "h") out.push(h("h5", { class: "report-h" }, text));
+    else out.push(h("p", { class: type === "li" ? "report-li" : "report-p" }, text));
+  }
+  out.push(h("p", { class: "report-note" },
+    r.truncated ? `This report continues on ${c.publisher}. ` : `End of report. Text courtesy of ${c.publisher}. `,
+    c.url && originalLink(c, "Read the original \u2197")
+  ));
+  return out;
+}
+
+async function showReport(c, box) {
+  if (!c.url) {
+    box.dataset.state = "error";
+    return box.replaceChildren(h("div", { class: "report-error" }, h("p", {}, "This fact-check didn't include a link to the full report.")));
+  }
+  box.dataset.state = "loading";
+  box.replaceChildren(h("div", { class: "report-loading" },
+    h("p", {}, `Fetching the full report from ${c.publisher}\u2026`),
+    h("div", { class: "sk sk-dark w100" }), h("div", { class: "sk sk-dark w80" }),
+    h("div", { class: "sk sk-dark w100" }), h("div", { class: "sk sk-dark w60" })
+  ));
+  try {
+    const report = await getReport(c.url);
+    box.replaceChildren(...renderReport(report, c));
+    box.dataset.state = "ok";
+    box.scrollTop = 0;
+  } catch (err) {
+    console.warn("Report load failed:", err);
+    box.dataset.state = "error";
+    box.replaceChildren(h("div", { class: "report-error" },
+      h("p", {}, "Couldn't load the full report inside the app. Some sites block in-app reading, or the connection dropped."),
+      h("div", { class: "report-error-actions" },
+        h("button", { class: "btn btn-outline btn-sm", type: "button", onclick: () => showReport(c, box) }, "Try again"),
+        originalLink(c, "Read it on the original site \u2197")
+      )
+    ));
+  }
 }
 
 /* ============================================================
@@ -309,16 +469,31 @@ stage.addEventListener("pointerup", (e) => {
   tracking = false;
   const dx = e.clientX - startX, dy = e.clientY - startY;
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
-  else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && !e.target.closest("a, button") && e.target.closest(".card")) flip();
+  else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && !e.target.closest("a, button, .report") && e.target.closest(".card")) flip();
 });
 
 document.addEventListener("keydown", (e) => {
+  if (aboutDlg.open) return;
   if (e.key === "ArrowRight") go(1);
   else if (e.key === "ArrowLeft") go(-1);
   else if ((e.key === " " || e.key === "Enter") && e.target === stage) { e.preventDefault(); flip(); }
 });
 prevBtn.addEventListener("click", () => go(-1));
 nextBtn.addEventListener("click", () => go(1));
+
+/* ============================================================
+   About dialog
+   ============================================================ */
+const aboutDlg = $("#about");
+document.querySelectorAll("[data-open-about]").forEach((b) => b.addEventListener("click", (e) => {
+  e.preventDefault();
+  aboutDlg.showModal();
+  document.body.classList.add("modal-open");
+  aboutDlg.querySelector(".about-body").scrollTop = 0;
+}));
+aboutDlg.addEventListener("close", () => document.body.classList.remove("modal-open"));
+aboutDlg.addEventListener("click", (e) => { if (e.target === aboutDlg) aboutDlg.close(); });
+aboutDlg.querySelector(".about-close").addEventListener("click", () => aboutDlg.close());
 
 /* ============================================================
    PWA: install prompt + service worker

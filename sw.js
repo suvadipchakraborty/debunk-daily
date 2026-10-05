@@ -1,4 +1,4 @@
-const CACHE = "debunk-daily-v2";
+const CACHE = "debunk-daily-v3";
 const ASSETS = ["./", "index.html", "styles.css", "app.js", "manifest.json",
   "icons/icon-192.png", "icons/icon-512.png"];
 
